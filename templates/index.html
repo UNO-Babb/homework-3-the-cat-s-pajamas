@@ -3,59 +3,145 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hexagon Tile Game</title>
+    <title>Chess 2</title>
+
+    <!-- Load jQuery (required by Chessboard.js) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Load Chessboard.js JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/js/chessboard.min.js"></script>
+
+    <!-- Load Chess.js for the game logic -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <!-- Chessboard.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/css/chessboard.min.css">
+
     <style>
         body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
             font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
+            text-align: center;
+            padding: 20px;
         }
+
         #board {
-            display: grid;
-            grid-template-columns: repeat(10, 60px);
-            grid-template-rows: repeat(10, 52px);
-            gap: 2px;
+            margin-top: 20px;
+            width: 400px;
+            height: 400px;
+            margin-left: auto;
+            margin-right: auto;
         }
-        .hex {
-            width: 60px;
-            height: 52px;
-            background-color: lightgray;
-            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-            transition: background-color 0.2s;
+
+        .game-status {
+            margin-top: 15px;
+            font-size: 18px;
+        }
+
+        input, button {
+            padding: 8px;
+            font-size: 16px;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
 
-<div id="board">
-    <!-- Hexagonal tiles will be added here on clicks -->
-</div>
+    <h1>Chess 2</h1>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script>
-    $(document).ready(function() {
-        // Create an empty board of hex tiles
-        for (let i = 0; i < 100; i++) {
-            const hexTile = $('<div class="hex"></div>');
-            hexTile.data("clicked", false);  // Track if a tile has been clicked
-            $('#board').append(hexTile);
+    <p>FEN: <span id="fen">{{ fen }}</span></p>
+
+    <!-- Chessboard.js will render the board here -->
+    <div id="board"></div>
+
+    <div>
+        <input type="text" id="moveInput" placeholder="Enter move (e.g. e2e4)" />
+        <button onclick="makeMove()">Make Move</button>
+    </div>
+
+    <div class="game-status" id="gameStatus"></div>
+
+    <div>
+        <button onclick="resetGame()">Reset Game</button>
+    </div>
+
+    
+
+    <!-- Custom JavaScript for the game functionality -->
+    <script>
+        const chess = new Chess();
+        const initialFen = document.getElementById("fen").textContent;
+
+        // Initialize Chessboard.js
+        const board = Chessboard('board', {
+            draggable: true,
+            position: initialFen,
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+            onDrop: handleDrop
+        });
+
+        // Handle piece drop event (move on the board)
+        function handleDrop(source, target) {
+            const move = source + target;
+
+            // Send move to the backend
+            fetch('/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ move })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.valid) {
+                    document.getElementById("fen").textContent = data.fen;
+                    board.position(data.fen);
+                    document.getElementById("gameStatus").textContent = data.game_over
+                        ? `Game Over: ${data.result}`
+                        : `Move made: ${move}`;
+                } else {
+                    board.position(chess.fen()); // Snap back to previous position
+                    document.getElementById("gameStatus").textContent = "Invalid move!";
+                }
+            })
+            .catch(err => {
+                console.error('Move error:', err);
+                board.position(chess.fen());
+            });
+
+            return 'snapback';  // Snap back to the previous position if move is invalid
         }
 
-        // Add color to hex tiles on click
-        $('#board').on('click', '.hex', function() {
-            if (!$(this).data("clicked")) {  // Only allow one click per tile
-                $.getJSON('/add_tile', function(data) {
-                    $(this).css('background-color', data.color);
-                    $(this).data("clicked", true);  // Mark as clicked
-                }.bind(this));
-            }
-        });
-    });
-</script>
+        // Function to make a move based on input
+        function makeMove() {
+            const move = document.getElementById("moveInput").value;
 
+            fetch('/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ move })
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById("fen").textContent = data.fen;
+                board.position(data.fen);
+                document.getElementById("moveInput").value = "";  // Clear the input box
+                document.getElementById("gameStatus").textContent = data.game_over
+                    ? `Game Over: ${data.result}`
+                    : `Move made: ${move}`;
+            })
+            .catch(err => console.error('Move error:', err));
+        }
+
+        // Function to reset the game
+        function resetGame() {
+            fetch('/reset', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                board.position(data.fen);
+                document.getElementById("fen").textContent = data.fen;
+                document.getElementById("gameStatus").textContent = "";
+            })
+            .catch(err => console.error('Reset error:', err));
+        }
+    </script>
 </body>
 </html>
